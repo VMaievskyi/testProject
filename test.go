@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/codegangsta/negroni"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
@@ -8,41 +9,34 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"time"
 	"os"
+	"time"
 )
 
 type DBHandler struct {
-	db *gorm.DB
+	db               *gorm.DB
+	connectionString string
 }
 
 type YanaName struct {
-	Id   int `gorm:"AUTO_INCREMENT"`
+	Id   int    `gorm:"AUTO_INCREMENT"`
 	Name string `sql:"type:VARCHAR(50) CHARACTER SET utf8 COLLATE utf8_general_ci"`
 }
 
 func main() {
-	connectionString := "testUser:" + os.Getenv("WEB_DB_PASSWORD") + "@tcp(" + os.Getenv("WEB_DB_HOST") + ")/obzyvalki?parseTime=true&charset=utf8"
-	log.Println(">>>>>>>>>>>>>>>>>>>>>>>"+connectionString)
-	db, err := gorm.Open("mysql", connectionString)
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
-	db.LogMode(true) // This would be off in production.
-	defer db.Close()
-	db.DropTable(&YanaName{})
-	db.AutoMigrate(&YanaName{}) // nice for development, but I would probably just write a SQL script to do this.
-	db.Model(&YanaName{}).AddIndex("yana_names_id", "id")
 
-	h := DBHandler{db: &db}
-	for _, val := range []string{"попа", "сосіска", "малявка", "красуня", "золотце", "старушка", "вредіна", "умнічка", "казявка",
-		"бузюська", "пісюська"} {
-		newName := YanaName{Name: val}
-		h.db.Create(&newName)
-	}
+	h := DBHandler{
+		connectionString: fmt.Sprintf(
+			"%s:%s@tcp(%s)/obzyvalki?parseTime=true&charset=utf8",
+			os.Getenv("MYSQL_USER"),
+			os.Getenv("WEB_DB_PASSWORD"),
+			os.Getenv("WEB_DB_HOST"))}
 
-	rand.Seed(time.Now().Unix())
+	h.connect()
+	defer h.close()
+
+	h.initDevConfigs()
+	h.insertTestData()
 
 	router := mux.NewRouter()
 	router.HandleFunc("/whoIsYana", h.yanaRandomizer).Methods("GET")
@@ -55,11 +49,12 @@ func main() {
 	n.Run(":8081")
 }
 
-func (h *DBHandler) isAlive(rw http.ResponseWriter, req *http.Request){
+func (h *DBHandler) isAlive(rw http.ResponseWriter, req *http.Request) {
 	rw.Write([]byte("YES"))
 }
 
 func (h *DBHandler) yanaRandomizer(rw http.ResponseWriter, req *http.Request) {
+	rand.Seed(time.Now().Unix())
 	var count int
 	h.db.Model(&YanaName{}).Count(&count)
 	returnObject := YanaName{}
@@ -76,11 +71,52 @@ func (h *DBHandler) addValue(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *DBHandler) getAllHandler(rw http.ResponseWriter, req *http.Request) {
-	var yanaNames []YanaName
+	var yanaNames []*YanaName
 	h.db.Find(&yanaNames)
-	var result string
-	for _, res := range yanaNames {
-		result += res.Name + " "
-	}
+	result := ToString(",", yanaNames)
+	fmt.Printf("%v", yanaNames)
 	rw.Write([]byte(result))
+}
+
+func (h *DBHandler) connect() {
+	db, err := gorm.Open("mysql", h.connectionString)
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	h.db = &db
+	h.waitDataBase()
+}
+
+func (h *DBHandler) close() {
+	h.db.Close()
+}
+
+func (h *DBHandler) waitDataBase() {
+	log.Println("<<<<<<<<<<<<<<ping >>>>>>>>>>>>>>>>>>")
+	pingResult := h.db.Exec("SELECT 1")
+	if pingResult.Error != nil {
+		log.Println("<<<<<<<<<<<<<< failed >>>>>>>>>>>>>>>>>>")
+		time.Sleep(100 * time.Millisecond)
+		h.waitDataBase()
+	}
+}
+
+func (h *DBHandler) insertTestData() {
+	for _, val := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"10", "11"} {
+		newName := YanaName{Name: val}
+		h.db.Create(&newName)
+	}
+}
+
+func (h *DBHandler) initDevConfigs() {
+	h.db.LogMode(true) // This would be off in production.
+	h.db.DropTable(&YanaName{})
+	h.db.AutoMigrate(&YanaName{}) // nice for development, but I would probably just write a SQL script to do this.
+	h.db.Model(&YanaName{}).AddIndex("yana_names_id", "id")
+}
+
+func (n *YanaName) String() string {
+	return n.Name
 }
