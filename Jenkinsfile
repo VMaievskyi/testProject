@@ -9,5 +9,12 @@ pipeline {
                 echo 'go build'
             }
         }
+        stage('Deploy') {
+             steps {
+                sh 'docker-compose down'
+                sh 'docker-compose up'
+                echo 'Deploying....'
+             }
+        }
     }
 }
