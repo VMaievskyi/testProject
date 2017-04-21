@@ -1,0 +1,5 @@
+Creating network "testproject_default" with the default driver
+Creating MySQL
+
+ERROR: for db  Cannot create container for service db: Conflict. The container name "/MySQL" is already in use by container "32380caf56240a66366f803da9fb2a6181fa04177d5ccf75a1e09df26f537623". You have to remove (or rename) that container to be able to reuse that name.
+Encountered errors while bringing up the project.
